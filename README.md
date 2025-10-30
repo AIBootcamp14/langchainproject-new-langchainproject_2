@@ -1,118 +1,165 @@
-# **프로젝트 제목**  
-프로젝트의 간단한 소개와 목적을 작성합니다.  
-- **프로젝트 기간:** YYYY.MM.DD ~ YYYY.MM.DD  
-- **배포 링크:** [서비스 바로가기](링크 입력) *(필요 시 추가)*  
+# 🛍️ 커머스 마케팅 AI 에이전트
 
----
+로컬 실행 가능한 멀티 태스크 커머스 마케팅 AI 에이전트 시스템입니다.
 
-## **1. 서비스 구성 요소**  
-### **1.1 주요 기능**  
-- 기능 1: *(주요 기능 간단 설명)*  
-- 기능 2: *(주요 기능 간단 설명)*  
-- 기능 3: *(주요 기능 간단 설명)*  
+## 📋 개요
 
-### **1.2 사용자 흐름**  
-- 사용자 시나리오 예시:  
-  1. *(유저 행동 1 설명)*  
-  2. *(유저 행동 2 설명)*  
+이 프로젝트는 **5가지 커머스 마케팅 태스크**를 수행하는 AI 에이전트 시스템입니다:
 
----
+1. **소비 트렌드 분석** - 제품/키워드의 트렌드 분석
+2. **광고 문구 생성** - AI 기반 광고 카피 생성
+3. **사용자 세그먼트 분류** - 고객 데이터 클러스터링 및 분류
+4. **리뷰 감성 분석** - 제품 리뷰 감성 분석 및 요약
+5. **경쟁사 분석** - 경쟁 제품 비교 및 SWOT 분석
 
-## **2. 활용 장비 및 협업 툴**  
+## 🏗️ 아키텍처
 
-### **2.1 활용 장비**  
-- **서버 장비:** *(예: AWS EC2 t2.medium)*  
-- **개발 환경:** *(예: Ubuntu 20.04, Windows 11)*  
-- **테스트 장비:** *(예: MacBook Pro, GPU RTX 3090)*  
+```
+사용자 메시지 → 라우터 (키워드 감지) → 적절한 에이전트 실행 → 결과 반환
+```
 
-### **2.2 협업 툴**  
-- **소스 관리:** GitHub  
-- **프로젝트 관리:** Jira, Notion  
-- **커뮤니케이션:** Slack  
-- **버전 관리:** Git  
+### 주요 구성 요소
 
----
+- **Frontend**: Vite + React (채팅 UI)
+- **Backend**: FastAPI
+- **LLM**: OpenAI Chat Completions API
+- **DB**: SQLite + SQLAlchemy + FTS5 (RAG용)
+- **외부 API**: Naver쇼핑, Google Trends 등 (태스크별 선택)
 
-## **3. 최종 선정 AI 모델 구조**  
-- **모델 이름:** *(예: BERT, GPT-4, YOLOv8)*  
-- **구조 및 설명:** *(모델의 세부 구조 및 특징 설명)*  
-- **학습 데이터:** *(데이터 출처 및 전처리 방법 설명)*  
-- **평가 지표:** *(정확도, F1-Score, RMSE 등 평가 기준 설명)*  
+## 🚀 빠른 시작
 
----
+### 1. 필수 요구사항
 
-## **4. 서비스 아키텍처**  
-### **4.1 시스템 구조도**  
-서비스 아키텍처 다이어그램을 첨부합니다. *(예: 이미지, 다이어그램)*  
+- Python 3.10+
+- Node.js 16+
+- OpenAI API 키
 
-![서비스 아키텍처 예시](링크 입력)  
+### 2. 설치 및 실행
 
-### **4.2 데이터 흐름도**  
-- 데이터 처리 및 서비스 간 연결 흐름 설명  
-- 예시:  
-  1. 사용자 입력 → AI 분석 → 결과 반환  
-  2. 데이터 저장 → 전처리 → 모델 적용  
+**백엔드:**
+```bash
+cd backend
+pip install -r requirements.txt
+python -m app.main
+```
 
----
+**프론트엔드:**
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-## **5. 사용 기술 스택**  
-### **5.1 백엔드**  
-- Flask / FastAPI / Django *(필요한 항목 작성)*  
-- 데이터베이스: SQLite / PostgreSQL / MySQL  
+### 3. 사용 예시
 
-### **5.2 프론트엔드**  
-- React.js / Next.js / Vue.js *(필요한 항목 작성)*  
+채팅창에 다음과 같이 입력하세요:
 
-### **5.3 머신러닝 및 데이터 분석**  
-- TensorFlow / PyTorch  
-- scikit-learn / Pandas / NumPy  
+- **트렌드 분석**: "최근 반려동물 관련 트렌드 분석해줘"
+- **광고 문구**: "친환경 세제 광고 문구 만들어줘"
+- **세그먼트 분류**: "이 고객 데이터를 세그먼트로 나눠줘"
+- **리뷰 분석**: "이 제품 리뷰 감성 분석해줘"
+- **경쟁사 분석**: "경쟁사 제품과 가격 비교해줘"
 
-### **5.4 배포 및 운영**  
-- AWS EC2 / S3 / Lambda  
-- Docker / Kubernetes / GitHub Actions  
+## 📁 프로젝트 구조
 
----
+```
+├── backend/
+│   └── app/
+│       ├── agents/
+│       │   ├── router.py              # 키워드 기반 라우터
+│       │   ├── trend_agent.py         # 트렌드 분석 에이전트
+│       │   ├── ad_copy_agent.py       # 광고 문구 생성 에이전트
+│       │   ├── segment_agent.py       # 세그먼트 분류 에이전트
+│       │   ├── review_agent.py        # 리뷰 감성 분석 에이전트
+│       │   └── competitor_agent.py    # 경쟁사 분석 에이전트
+│       ├── tools/
+│       │   ├── common/                # 공통 도구
+│       │   │   ├── web_search.py      # 웹 검색
+│       │   │   ├── api_client.py      # 외부 API 클라이언트
+│       │   │   └── rag_base.py        # RAG 인프라
+│       │   ├── trend_tools.py         # 트렌드 분석 도구
+│       │   ├── ad_tools.py            # 광고 문구 도구
+│       │   ├── segment_tools.py       # 세그먼트 분류 도구
+│       │   ├── review_tools.py        # 리뷰 분석 도구
+│       │   └── competitor_tools.py    # 경쟁사 분석 도구
+│       ├── db/                        # 데이터베이스
+│       ├── routes/                    # API 라우트
+│       └── schemas/                   # DTO
+└── frontend/                          # React 채팅 UI
+```
 
-## **6. 팀원 소개**  
+## 👥 팀 협업 가이드
 
-| 이름      | 역할              | GitHub                               | 담당 기능                                 |
-|----------|------------------|-------------------------------------|-----------------------------------------|
-| **홍길동** | 팀장/백엔드 개발자 | [GitHub 링크](링크 입력)             | 서버 구축, API 개발, 배포 관리            |
-| **김철수** | 프론트엔드 개발자  | [GitHub 링크](링크 입력)             | UI/UX 디자인, 프론트엔드 개발             |
-| **이영희** | AI 모델 개발자    | [GitHub 링크](링크 입력)             | AI 모델 선정 및 학습, 데이터 분석         |
-| **박수진** | 데이터 엔지니어    | [GitHub 링크](링크 입력)             | 데이터 수집, 전처리, 성능 평가 및 테스트   |
+### 각 팀원의 작업 범위
 
----
+**팀원 1: 트렌드 분석**
+- `backend/app/agents/trend_agent.py` 구현
+- `backend/app/tools/trend_tools.py` 구현
+- Google Trends, Naver DataLab API 연동
 
-## **7. Appendix**  
-### **7.1 참고 자료**  
-- 논문 및 문서: *(참고 논문 또는 기술 문서 링크 추가)*  
-- 데이터 출처: *(데이터셋 링크 또는 설명)*  
-- 코드 참고 자료: *(레퍼런스 코드 또는 문서 링크)*  
+**팀원 2: 광고 문구 생성**
+- `backend/app/agents/ad_copy_agent.py` 구현
+- `backend/app/tools/ad_tools.py` 구현
+- LLM 프롬프트 최적화
 
-### **7.2 설치 및 실행 방법**  
-1. **필수 라이브러리 설치:**  
-    ```bash
-    pip install -r requirements.txt
-    ```
+**팀원 3: 사용자 세그먼트 분류**
+- `backend/app/agents/segment_agent.py` 구현
+- `backend/app/tools/segment_tools.py` 구현
+- scikit-learn 클러스터링 알고리즘 적용
 
-2. **서버 실행:**  
-    ```bash
-    python app.py
-    ```
+**팀원 4: 리뷰 감성 분석**
+- `backend/app/agents/review_agent.py` 구현
+- `backend/app/tools/review_tools.py` 구현
+- 크롤링 또는 API로 리뷰 수집, 감성 분석
 
-3. **웹페이지 접속:**  
-    ```
-    http://localhost:5000
-    ```
+**팀원 5: 경쟁사 분석**
+- `backend/app/agents/competitor_agent.py` 구현
+- `backend/app/tools/competitor_tools.py` 구현
+- 가격 비교, SWOT 분석 로직
 
-### **7.3 주요 커밋 기록 및 업데이트 내역**  
+### 작업 흐름
 
-| 날짜         | 업데이트 내용                              | 담당자      |
-|-------------|------------------------------------------|------------|
-| YYYY.MM.DD  | 초기 프로젝트 세팅 및 환경 설정 추가          | 홍길동      |
-| YYYY.MM.DD  | AI 모델 최적화 및 성능 개선                   | 이영희      |
-| YYYY.MM.DD  | UI 디자인 및 페이지 구조 업데이트              | 김철수      |
-| YYYY.MM.DD  | 데이터 전처리 및 분석 코드 추가                | 박수진      |
-| YYYY.MM.DD  | 배포 환경 설정 및 Docker 이미지 구성           | 홍길동      |
+1. 각 팀원은 자신의 에이전트/툴 파일을 구현
+2. `.env`에 필요한 API 키 추가
+3. `backend/app/agents/router.py`에서 에이전트 활성화:
+   ```python
+   from app.agents.trend_agent import run_agent as run_trend
+   AGENT_MAP["trend"]["runner"] = run_trend
+   ```
+4. 채팅창에서 키워드로 테스트
 
+## 🔑 환경 변수 설정
+
+`backend/.env` 파일에서 설정:
+
+```env
+# 필수
+OPENAI_API_KEY=your_openai_key_here
+
+# 선택 (태스크별 필요 시)
+NAVER_DATALAB_CLIENT_ID=your_naver_client_id_here
+NAVER_SHOPPING_CLIENT_ID=your_naver_shopping_client_id_here
+GOOGLE_CUSTOM_SEARCH_API_KEY=your_google_search_key_here
+```
+
+## 🧪 테스트
+
+백엔드가 실행된 상태에서:
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "트렌드 분석해줘", "session_id": ""}'
+```
+
+## 📝 라이선스
+
+MIT License
+
+## 🤝 기여
+
+이슈나 PR을 환영합니다!
+
+## 📞 문의
+
+프로젝트 관련 문의는 이슈로 남겨주세요.
