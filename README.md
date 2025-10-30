@@ -1,262 +1,165 @@
-# 법인세 에이전트 (Corporate Tax Agent)
+# 🛍️ 커머스 마케팅 AI 에이전트
 
-법인세 계산 및 리포트 생성 AI 에이전트 (로컬 실행 가능)
+로컬 실행 가능한 멀티 태스크 커머스 마케팅 AI 에이전트 시스템입니다.
 
-## ⚠️ 중요 면책 사항
+## 📋 개요
 
-**본 시스템은 연구 및 시뮬레이션 목적으로만 사용됩니다.**
+이 프로젝트는 **5가지 커머스 마케팅 태스크**를 수행하는 AI 에이전트 시스템입니다:
 
-- 실제 세무 신고에 사용할 수 없습니다.
-- 세무 자문 용도로 사용할 수 없습니다.
-- 법인세 파라미터는 임시 템플릿이며 실제 법령과 다를 수 있습니다.
-- 정식 세무 업무는 반드시 공인 세무사와 상담하세요.
+1. **소비 트렌드 분석** - 제품/키워드의 트렌드 분석
+2. **광고 문구 생성** - AI 기반 광고 카피 생성
+3. **사용자 세그먼트 분류** - 고객 데이터 클러스터링 및 분류
+4. **리뷰 감성 분석** - 제품 리뷰 감성 분석 및 요약
+5. **경쟁사 분석** - 경쟁 제품 비교 및 SWOT 분석
 
-## 주요 기능
+## 🏗️ 아키텍처
 
-- 🏢 DART(전자공시) API를 통한 기업 재무 정보 조회
-- 💰 법인세 자동 계산 (하드코딩 템플릿 기반)
-- 📊 PDF 리포트 생성
-- 🔍 과거 계산 결과 검색 및 비교 (RAG + FTS5)
-- 💬 멀티턴 채팅 지원
-
-## 기술 스택
-
-### 백엔드
-- FastAPI
-- SQLAlchemy + SQLite + FTS5
-- OpenAI API (Chat Completions + Embeddings)
-- ReportLab (PDF 생성)
-
-### 프론트엔드
-- Vite + React + TypeScript
-- 간단한 채팅 UI
-
-## 설치 및 실행
-
-### 사전 요구사항
-
-- Python 3.10 이상
-- Node.js 18 이상
-- OpenAI API 키
-- DART API 키 (선택)
-
-### 1. 백엔드 설정
-
-```bash
-# 가상환경 생성 (권장)
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# Mac/Linux
-source venv/bin/activate
-
-# 의존성 설치
-cd backend
-pip install -r requirements.txt
-
-# 환경 변수 설정
-cp .env.example .env
-# .env 파일을 열어 API 키 입력
-
-# 백엔드 실행
-python -m app.main
-# 또는
-uvicorn app.main:app --reload --port 8000
+```
+사용자 메시지 → 라우터 (키워드 감지) → 적절한 에이전트 실행 → 결과 반환
 ```
 
-백엔드가 `http://localhost:8000`에서 실행됩니다.
+### 주요 구성 요소
 
-### 2. 프론트엔드 설정
+- **Frontend**: Vite + React (채팅 UI)
+- **Backend**: FastAPI
+- **LLM**: OpenAI Chat Completions API
+- **DB**: SQLite + SQLAlchemy + FTS5 (RAG용)
+- **외부 API**: Naver쇼핑, Google Trends 등 (태스크별 선택)
 
+## 🚀 빠른 시작
+
+### 1. 필수 요구사항
+
+- Python 3.10+
+- Node.js 16+
+- OpenAI API 키
+
+### 2. 설치 및 실행
+
+**백엔드:**
 ```bash
-# 새 터미널 열기
+cd backend
+pip install -r requirements.txt
+python -m app.main
+```
+
+**프론트엔드:**
+```bash
 cd frontend
-
-# 의존성 설치
 npm install
-
-# 프론트엔드 실행
 npm run dev
 ```
 
-프론트엔드가 `http://localhost:5173`에서 실행됩니다.
+### 3. 사용 예시
 
-### 3. 브라우저 접속
+채팅창에 다음과 같이 입력하세요:
 
-`http://localhost:5173`에 접속하여 채팅 시작
+- **트렌드 분석**: "최근 반려동물 관련 트렌드 분석해줘"
+- **광고 문구**: "친환경 세제 광고 문구 만들어줘"
+- **세그먼트 분류**: "이 고객 데이터를 세그먼트로 나눠줘"
+- **리뷰 분석**: "이 제품 리뷰 감성 분석해줘"
+- **경쟁사 분석**: "경쟁사 제품과 가격 비교해줘"
 
-## 사용 예시
-
-### 기본 사용
-
-```
-사용자: 현재 법인세 관련 법령 기준으로 삼성전자의 법인세를 계산하고 pdf로 저장해줘
-```
-
-에이전트가 다음 작업을 수행합니다:
-1. DART에서 삼성전자 재무 정보 조회
-2. 하드코딩된 법령 파라미터로 법인세 계산
-3. 결과 평가 및 검증
-4. PDF 리포트 생성
-5. DB 및 RAG 저장소에 결과 저장
-
-### 비교 분석
+## 📁 프로젝트 구조
 
 ```
-사용자: 지난번 결과랑 이번 결과를 비교표로 보여줘
+├── backend/
+│   └── app/
+│       ├── agents/
+│       │   ├── router.py              # 키워드 기반 라우터
+│       │   ├── trend_agent.py         # 트렌드 분석 에이전트
+│       │   ├── ad_copy_agent.py       # 광고 문구 생성 에이전트
+│       │   ├── segment_agent.py       # 세그먼트 분류 에이전트
+│       │   ├── review_agent.py        # 리뷰 감성 분석 에이전트
+│       │   └── competitor_agent.py    # 경쟁사 분석 에이전트
+│       ├── tools/
+│       │   ├── common/                # 공통 도구
+│       │   │   ├── web_search.py      # 웹 검색
+│       │   │   ├── api_client.py      # 외부 API 클라이언트
+│       │   │   └── rag_base.py        # RAG 인프라
+│       │   ├── trend_tools.py         # 트렌드 분석 도구
+│       │   ├── ad_tools.py            # 광고 문구 도구
+│       │   ├── segment_tools.py       # 세그먼트 분류 도구
+│       │   ├── review_tools.py        # 리뷰 분석 도구
+│       │   └── competitor_tools.py    # 경쟁사 분석 도구
+│       ├── db/                        # 데이터베이스
+│       ├── routes/                    # API 라우트
+│       └── schemas/                   # DTO
+└── frontend/                          # React 채팅 UI
 ```
 
-에이전트가 RAG 검색을 통해 과거 결과를 조회하고 비교표를 생성합니다.
+## 👥 팀 협업 가이드
 
-## 프로젝트 구조
+### 각 팀원의 작업 범위
 
-```
-corp-tax-agent/
-├─ backend/
-│  ├─ app/
-│  │  ├─ main.py              # FastAPI 메인
-│  │  ├─ config.py            # 설정
-│  │  ├─ routes/
-│  │  │  ├─ chat.py           # 채팅 엔드포인트
-│  │  │  └─ report.py         # 리포트 다운로드
-│  │  ├─ schemas/
-│  │  │  └─ dto.py            # Pydantic 스키마
-│  │  ├─ db/
-│  │  │  ├─ models.py         # SQLAlchemy 모델
-│  │  │  ├─ session.py        # DB 세션
-│  │  │  └─ crud.py           # CRUD 함수
-│  │  ├─ agents/
-│  │  │  └─ corp_tax_agent.py # 에이전트 그래프
-│  │  ├─ tools/
-│  │  │  ├─ llm.py            # OpenAI 래퍼
-│  │  │  ├─ dart.py           # DART API
-│  │  │  ├─ tax_rules.py      # 법령 템플릿
-│  │  │  ├─ tax_calc.py       # 계산 로직
-│  │  │  ├─ rag_store.py      # RAG 저장/검색
-│  │  │  └─ pdf_maker.py      # PDF 생성
-│  │  └─ utils/
-│  │     └─ timeutil.py       # 시간 유틸
-│  ├─ requirements.txt
-│  └─ .env.example
-│
-├─ frontend/
-│  ├─ src/
-│  │  ├─ main.tsx
-│  │  ├─ App.tsx              # 메인 채팅 UI
-│  │  ├─ App.css
-│  │  └─ api.ts               # API 클라이언트
-│  ├─ index.html
-│  ├─ package.json
-│  └─ vite.config.ts
-│
-└─ README.md
-```
+**팀원 1: 트렌드 분석**
+- `backend/app/agents/trend_agent.py` 구현
+- `backend/app/tools/trend_tools.py` 구현
+- Google Trends, Naver DataLab API 연동
 
-## API 엔드포인트
+**팀원 2: 광고 문구 생성**
+- `backend/app/agents/ad_copy_agent.py` 구현
+- `backend/app/tools/ad_tools.py` 구현
+- LLM 프롬프트 최적화
 
-### POST /chat
-채팅 메시지 전송
+**팀원 3: 사용자 세그먼트 분류**
+- `backend/app/agents/segment_agent.py` 구현
+- `backend/app/tools/segment_tools.py` 구현
+- scikit-learn 클러스터링 알고리즘 적용
 
-**요청:**
-```json
-{
-  "message": "삼성전자 법인세 계산해줘",
-  "session_id": "optional-session-id"
-}
-```
+**팀원 4: 리뷰 감성 분석**
+- `backend/app/agents/review_agent.py` 구현
+- `backend/app/tools/review_tools.py` 구현
+- 크롤링 또는 API로 리뷰 수집, 감성 분석
 
-**응답:**
-```json
-{
-  "session_id": "uuid",
-  "reply_text": "계산 결과 텍스트",
-  "report_id": "uuid",
-  "download_url": "/report/uuid"
-}
-```
+**팀원 5: 경쟁사 분석**
+- `backend/app/agents/competitor_agent.py` 구현
+- `backend/app/tools/competitor_tools.py` 구현
+- 가격 비교, SWOT 분석 로직
 
-### GET /report/{report_id}
-PDF 리포트 다운로드
+### 작업 흐름
 
-### GET /healthz
-헬스체크
+1. 각 팀원은 자신의 에이전트/툴 파일을 구현
+2. `.env`에 필요한 API 키 추가
+3. `backend/app/agents/router.py`에서 에이전트 활성화:
+   ```python
+   from app.agents.trend_agent import run_agent as run_trend
+   AGENT_MAP["trend"]["runner"] = run_trend
+   ```
+4. 채팅창에서 키워드로 테스트
 
-## 데이터베이스 스키마
+## 🔑 환경 변수 설정
 
-- **sessions**: 채팅 세션
-- **messages**: 채팅 메시지 (멀티턴)
-- **law_param_snapshots**: 법령 파라미터 스냅샷
-- **dart_cache**: DART API 응답 캐시
-- **calc_results**: 법인세 계산 결과
-- **rag_docs**: RAG 문서 저장
-- **rag_fts**: FTS5 전문 검색 인덱스
-
-## 에이전트 그래프
-
-```
-Plan → Fetch(DART) → LawParam → Calc → Eval → Report
-                                         ↓
-                                    (재계산?)
-```
-
-- **Plan**: LLM이 사용자 요청 분석
-- **Fetch**: DART에서 재무 정보 조회
-- **LawParam**: 현재 법령 파라미터 로드
-- **Calc**: 법인세 계산
-- **Eval**: 결과 평가 (신뢰도 체크)
-- **Report**: PDF 생성 및 RAG 저장
-
-## 환경 변수
-
-`.env` 파일:
+`backend/.env` 파일에서 설정:
 
 ```env
-# OpenAI API
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_EMBED_MODEL=text-embedding-3-small
+# 필수
+OPENAI_API_KEY=your_openai_key_here
 
-# DART API (없으면 모의 데이터 사용)
-DART_API_KEY=your-dart-key
-
-# DB
-DB_URL=sqlite:///./corp_tax_agent.db
-
-# 리포트
-REPORT_DIR=./reports
+# 선택 (태스크별 필요 시)
+NAVER_DATALAB_CLIENT_ID=your_naver_client_id_here
+NAVER_SHOPPING_CLIENT_ID=your_naver_shopping_client_id_here
+GOOGLE_CUSTOM_SEARCH_API_KEY=your_google_search_key_here
 ```
 
-## 테스트 시나리오
+## 🧪 테스트
 
-1. **기본 계산**
-   - "삼성전자 법인세 계산해줘"
-   - PDF 다운로드 확인
+백엔드가 실행된 상태에서:
 
-2. **멀티턴**
-   - "이제 SK하이닉스도 계산해줘"
-   - 세션 유지 확인
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "트렌드 분석해줘", "session_id": ""}'
+```
 
-3. **비교 분석**
-   - "삼성전자 과거 결과랑 비교해줘"
-   - RAG 검색 및 비교표 생성 확인
+## 📝 라이선스
 
-4. **DB 확인**
-   - `corp_tax_agent.db` 파일 생성 확인
-   - `reports/` 폴더에 PDF 생성 확인
+MIT License
 
-## 제한 사항
+## 🤝 기여
 
-- DART API 키가 없으면 모의 데이터 사용
-- 법인세 계산은 간략화된 근사치
-- 세액공제 및 세무조정 미반영
-- 실제 세무 신고에 사용 불가
+이슈나 PR을 환영합니다!
 
-## 라이선스
+## 📞 문의
 
-MIT License (연구 및 교육 목적)
-
-## 문의
-
-프로젝트 관련 문의는 이슈를 통해 제출해주세요.
+프로젝트 관련 문의는 이슈로 남겨주세요.

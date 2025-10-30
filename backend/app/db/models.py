@@ -25,7 +25,6 @@ class Session(Base):
 
     # 관계 정의
     messages = relationship("Message", back_populates="session", cascade="all, delete-orphan")
-    calc_results = relationship("CalcResult", back_populates="session", cascade="all, delete-orphan")
 
 
 class Message(Base):
@@ -42,58 +41,18 @@ class Message(Base):
     session = relationship("Session", back_populates="messages")
 
 
-class LawParamSnapshot(Base):
-    """법령 파라미터 스냅샷 테이블"""
-    __tablename__ = 'law_param_snapshots'
-
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    version = Column(String(50), nullable=False, unique=True)
-    json_blob = Column(JSON, nullable=False)  # 전체 법령 파라미터 JSON
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-
-class DartCache(Base):
-    """DART API 응답 캐시 테이블"""
-    __tablename__ = 'dart_cache'
-
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    corp_name = Column(String(200), nullable=True)
-    corp_code = Column(String(20), nullable=True)
-    period = Column(String(20), nullable=True)  # 예: '2023Q3'
-    key = Column(String(100), nullable=False)  # 캐시 키 (예: 'corp_code', 'financials')
-    value = Column(Text, nullable=True)  # JSON 문자열
-    raw_source = Column(Text, nullable=True)  # 원본 응답
-    fetched_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-
-class CalcResult(Base):
-    """법인세 계산 결과 테이블"""
-    __tablename__ = 'calc_results'
-
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    session_id = Column(String(36), ForeignKey('sessions.id'), nullable=False)
-    corp_name = Column(String(200), nullable=False)
-    corp_code = Column(String(20), nullable=True)
-    calc_date = Column(DateTime, default=datetime.utcnow, nullable=False)
-    law_param_version = Column(String(50), nullable=False)
-    result_json = Column(JSON, nullable=False)  # 계산 상세 결과
-    summary_text = Column(Text, nullable=True)  # 요약 텍스트
-    pdf_path = Column(String(500), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    # 관계 정의
-    session = relationship("Session", back_populates="calc_results")
+# 법인세 관련 테이블 제거됨 (LawParamSnapshot, DartCache, CalcResult)
 
 
 class RagDoc(Base):
-    """RAG 문서 저장 테이블"""
+    """RAG 문서 저장 테이블 (커머스 마케팅용)"""
     __tablename__ = 'rag_docs'
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    doc_type = Column(String(50), nullable=False)  # 'calc_result', 'law_param', etc.
+    category = Column(String(50), nullable=False)  # 'trend', 'ad', 'segment', 'review', 'competitor'
     title = Column(String(500), nullable=False)
     content = Column(Text, nullable=False)  # 검색 대상 텍스트
-    meta_json = Column(JSON, nullable=True)  # corp_code, calc_date, law_version 등
+    meta_json = Column(JSON, nullable=True)  # 태스크별 메타데이터
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 

@@ -89,7 +89,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>법인세 에이전트 (로컬)</h1>
+        <h1>커머스 마케팅 에이전트</h1>
         <button onClick={handleNewChat} className="new-chat-btn">
           새 대화
         </button>
@@ -99,9 +99,9 @@ function App() {
         <div className="messages">
           {messages.length === 0 && (
             <div className="welcome">
-              <p>법인세 계산을 도와드립니다.</p>
+              <p>커머스 마케팅 분석을 도와드립니다.</p>
               <p className="example">
-                예시: "현재 법인세 관련 법령 기준으로 삼성전자의 법인세를 계산하고 pdf로 저장해줘"
+                예시: "에어팟 프로 구매자를 세그먼트로 분류해줘"
               </p>
             </div>
           )}
@@ -155,7 +155,7 @@ function App() {
       </div>
 
       <footer className="footer">
-        <p>⚠️ 본 결과는 연구·시뮬레이션용이며 신고/자문 용도로 사용할 수 없습니다.</p>
+        <p>⚠️ 본 결과는 연구·교육용이며 실제 마케팅 전략 수립 시 전문가와 상담하시기 바랍니다.</p>
       </footer>
     </div>
   );

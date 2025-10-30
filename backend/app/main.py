@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 # FastAPI 앱 생성
 app = FastAPI(
-    title="법인세 에이전트 API",
-    description="법인세 계산 및 리포트 생성 API (연구용)",
+    title="커머스 마케팅 에이전트 API",
+    description="커머스 마케팅 분석 및 리포트 생성 API (트렌드 분석, 광고 문구, 사용자 세그먼트, 리뷰 분석, 경쟁사 분석)",
     version="0.1.0"
 )
 
@@ -49,7 +49,7 @@ async def startup_event():
     - 디렉토리 생성
     """
     logger.info("=" * 60)
-    logger.info("법인세 에이전트 시작")
+    logger.info("커머스 마케팅 에이전트 시작")
     logger.info("=" * 60)
 
     # 1. 디렉토리 생성
@@ -71,16 +71,8 @@ async def startup_event():
         logger.error(f"데이터베이스 초기화 실패: {e}")
         raise
 
-    # 4. 법령 파라미터 스냅샷 최초 저장
-    try:
-        from app.tools.tax_rules import get_current_law_params
-        law_params = get_current_law_params()
-        logger.info(f"법령 파라미터 로드: {law_params.get('version')}")
-    except Exception as e:
-        logger.error(f"법령 파라미터 로드 실패: {e}")
-
     logger.info("=" * 60)
-    logger.info("법인세 에이전트 준비 완료")
+    logger.info("커머스 마케팅 에이전트 준비 완료")
     logger.info("API 문서: http://localhost:8000/docs")
     logger.info("=" * 60)
 
@@ -88,7 +80,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """앱 종료 시 실행"""
-    logger.info("법인세 에이전트 종료")
+    logger.info("커머스 마케팅 에이전트 종료")
 
 
 # 라우터 등록
@@ -100,7 +92,7 @@ app.include_router(report.router, tags=["Report"])
 async def root():
     """루트 엔드포인트"""
     return {
-        "service": "법인세 에이전트 API",
+        "service": "커머스 마케팅 에이전트 API",
         "version": "0.1.0",
         "status": "running",
         "docs": "/docs"
