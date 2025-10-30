@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 import logging
 
 from app.schemas.dto import ChatRequest, ChatResponse
-from app.agents.corp_tax_agent import run_agent
+from app.agents.router import route_to_agent  # 🆕 라우터 사용
 
 logger = logging.getLogger(__name__)
 
@@ -23,17 +23,21 @@ async def chat(request: ChatRequest):
     try:
         logger.info(f"채팅 요청 수신: {request.message[:50]}...")
 
-        # 에이전트 실행
-        result = run_agent(
+        # 라우터로 에이전트 실행 🆕
+        result = route_to_agent(
             session_id=request.session_id or "",
             user_message=request.message
         )
 
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=500,
-                detail=result.get("reply_text", "에이전트 실행 실패")
-            )
+        # 실패한 경우에도 안내 메시지를 반환 (HTTP 200)
+        # 태스크를 못 찾거나 에이전트가 미구현인 경우도 정상 응답으로 처리
+        if not result.get("success") and "Unknown task" not in result.get("errors", []):
+            # 실제 에러인 경우에만 500 에러
+            if "Agent not implemented" not in result.get("errors", []):
+                raise HTTPException(
+                    status_code=500,
+                    detail=result.get("reply_text", "에이전트 실행 실패")
+                )
 
         # 응답 구성
         response = ChatResponse(
