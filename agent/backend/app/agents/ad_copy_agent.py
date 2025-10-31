@@ -2,11 +2,17 @@
 광고 문구 생성 에이전트
 LLM을 활용한 다양한 광고 카피 생성
 """
+import json
 import logging
 from typing import Dict, Any, Optional, List
 
 from app.db.session import get_db
-from app.db.crud import append_message, create_session, get_session
+from app.db.crud import (
+    append_message,
+    create_session,
+    get_session,
+    get_messages_by_session
+)
 from app.tools.ad_tools import (
     parse_ad_request,
     generate_ad_copy_matrix,
@@ -16,6 +22,10 @@ from app.tools.ad_tools import (
 from app.tools.common.rag_base import build_context_from_rag, add_to_rag
 
 logger = logging.getLogger(__name__)
+
+BRIEF_MARKER = "__ad_brief__"
+DEFAULT_TONES = ["friendly", "formal", "humor"]
+DEFAULT_LENGTHS = ["short", "medium", "long"]
 
 
 class AdCopyAgentContext:
@@ -32,6 +42,7 @@ class AdCopyAgentContext:
         self.compliance_results: Dict[str, Any] = {}
         self.rag_doc_ids: List[str] = []
         self.errors: List[str] = []
+        self.is_additional_request: bool = False
 
 
 class AdCopyAgent:
@@ -45,6 +56,7 @@ class AdCopyAgent:
         logger.info(f"광고 문구 생성 시작 (세션: {session_id})")
 
         context = AdCopyAgentContext(session_id, user_message)
+        context.is_additional_request = self._is_additional_request(user_message)
 
         try:
             with get_db() as db:
@@ -65,40 +77,33 @@ class AdCopyAgent:
                 context.product_brief = parse_ad_request(context.user_message)
             except Exception as parse_error:
                 logger.error("제품 정보 파싱 실패", exc_info=True)
-                error_msg = f"제품 정보를 이해하는 과정에서 오류가 발생했습니다: {parse_error}"
-                context.errors.append(error_msg)
-                reply_text = self._build_missing_product_reply()
-                with get_db() as db:
-                    append_message(db, context.session_id, "assistant", reply_text)
-                return {
-                    "success": False,
-                    "session_id": context.session_id,
-                    "reply_text": reply_text,
-                    "result_data": None,
-                    "errors": context.errors
-                }
+                logger.debug(f"제품 정보 파싱 예외: {parse_error}")
 
             if not context.product_brief or not context.product_brief.get("product_name"):
-                reply_text = self._build_missing_product_reply()
-                with get_db() as db:
-                    append_message(db, context.session_id, "assistant", reply_text)
-                context.errors.append("제품명을 식별하지 못했습니다.")
-                return {
-                    "success": False,
-                    "session_id": context.session_id,
-                    "reply_text": reply_text,
-                    "result_data": None,
-                    "errors": context.errors
-                }
+                fallback = self._load_previous_brief(context.session_id)
+                if fallback:
+                    context.product_brief = fallback
+                else:
+                    reply_text = self._build_missing_product_reply()
+                    with get_db() as db:
+                        append_message(db, context.session_id, "assistant", reply_text)
+                    context.errors.append("제품명을 식별하지 못했습니다.")
+                    return {
+                        "success": False,
+                        "session_id": context.session_id,
+                        "reply_text": reply_text,
+                        "result_data": None,
+                        "errors": context.errors
+                    }
 
             # 기본 길이/톤 옵션 설정
             context.length_options = self._normalize_preferences(
                 context.product_brief.get("length_preferences"),
-                default=["short", "medium", "long"]
+                default=DEFAULT_LENGTHS
             )
             context.tone_options = self._normalize_preferences(
                 context.product_brief.get("tone_preferences"),
-                default=["friendly", "formal", "humor"]
+                default=DEFAULT_TONES
             )
 
             # Step 2. RAG 컨텍스트 확보
@@ -109,12 +114,22 @@ class AdCopyAgent:
                 k=3
             )
 
+            # 현재 브리프를 세션에 저장 (후속 요청 지원)
+            self._persist_brief(context)
+
             # Step 3. LLM으로 광고 문구 배리에이션 생성
+            suggestions_per_slot = 3 if context.is_additional_request else 2
+            extra_instruction = (
+                "이전에 제공한 문구와 겹치지 않도록 새로운 관점과 표현을 사용하세요."
+                if context.is_additional_request else ""
+            )
             context.ad_variations = generate_ad_copy_matrix(
                 product_brief=context.product_brief,
                 rag_context=context.rag_context,
                 tone_options=context.tone_options,
-                length_options=context.length_options
+                length_options=context.length_options,
+                suggestions_per_slot=suggestions_per_slot,
+                extra_instruction=extra_instruction
             )
 
             total_variations = self._count_variations(context.ad_variations)
@@ -260,6 +275,10 @@ class AdCopyAgent:
         if campaign_goal:
             lines.append(f"- 캠페인 목표: {campaign_goal}")
 
+        if context.is_additional_request:
+            lines.append("")
+            lines.append("🔁 추가 요청을 반영해 새로운 문구를 제안합니다.")
+
         lines.append("")
         lines.append(f"총 {total_variations}개의 카피를 길이·톤 조합으로 구성했습니다:")
 
@@ -274,10 +293,8 @@ class AdCopyAgent:
                 if not candidates:
                     continue
                 length_label = length_labels.get(length, length.capitalize())
-                preview = candidates[0]
+                preview = candidates[0].strip()
                 lines.append(f"- {length_label}: {preview}")
-                if len(candidates) > 1:
-                    lines.append(f"  · 추가 제안 {len(candidates) - 1}개 포함")
 
         compliance_summary = context.compliance_results.get("summary", {})
         passed = compliance_summary.get("passed", 0)
@@ -295,15 +312,55 @@ class AdCopyAgent:
             if len(non_compliant_entries) > 3:
                 lines.append(f"  · 추가 보완 필요 항목 {len(non_compliant_entries) - 3}개")
 
-        if context.rag_doc_ids:
-            lines.append("")
-            lines.append("📚 과거 성공 사례와 함께 저장해 두었습니다. 다음 요청 시 참조됩니다.")
-
         lines.append("")
         lines.append("필요하면 특정 톤이나 길이만 다시 요청하거나, 제품 특징을 더 알려주시면 카피를 미세 조정할 수 있습니다.")
         lines.append("\n⚠️ 본 결과는 마케팅 참고용 초안입니다. 최종 사용 전 관련 법규와 브랜드 가이드를 다시 확인하세요.")
 
         return "\n".join(lines)
+
+    @staticmethod
+    def _is_additional_request(user_message: str) -> bool:
+        """추가 제안 요청 여부 판별"""
+        lowered = user_message.lower()
+        keywords = ["추가", "더", "또", "extra", "another"]
+        return any(keyword in lowered for keyword in keywords)
+
+    def _persist_brief(self, context: AdCopyAgentContext) -> None:
+        """현재 세션에 제품 브리프를 저장 (후속 요청 지원)"""
+        if not context.product_brief:
+            return
+
+        payload = json.dumps(context.product_brief, ensure_ascii=False)
+        marker_message = f"{BRIEF_MARKER}:{payload}"
+
+        with get_db() as db:
+            append_message(db, context.session_id, "system", marker_message)
+
+    def _load_previous_brief(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """세션에서 마지막 제품 브리프를 불러오기"""
+        try:
+            with get_db() as db:
+                rows = [
+                    (msg.role, msg.content)
+                    for msg in get_messages_by_session(db, session_id)
+                ]
+        except Exception as e:
+            logger.warning(f"이전 브리프 로드 실패: {e}")
+            return None
+
+        for role, content in reversed(rows):
+            if role != "system":
+                continue
+            if not content.startswith(BRIEF_MARKER):
+                continue
+            payload = content[len(BRIEF_MARKER) + 1:].strip()
+            try:
+                brief = json.loads(payload)
+                if brief.get("product_name"):
+                    return brief
+            except json.JSONDecodeError:
+                continue
+        return None
 
 
 agent = AdCopyAgent()

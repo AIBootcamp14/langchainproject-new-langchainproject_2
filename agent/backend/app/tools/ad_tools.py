@@ -4,9 +4,10 @@ LLM을 활용한 광고 카피 생성 파이프라인
 """
 import json
 import logging
+import re
 import textwrap
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from app.tools.llm import call_llm_with_context
 
@@ -67,6 +68,7 @@ COPY_PROMPT_TEMPLATE = textwrap.dedent(
     - 톤: {tone_label}
     - 길이: {length_label}
     - 제안 개수: {suggestions}
+    {extra_block}
 
     조건:
     - 한국어로 작성
@@ -76,7 +78,7 @@ COPY_PROMPT_TEMPLATE = textwrap.dedent(
     - 친근한 말투를 원하면 "친근한" 느낌을 주되 존칭 사용
 
     출력 형식:
-    JSON 배열. 각 요소는 {"copy": "<문구>"} 형태여야 합니다.
+    JSON 배열. 각 요소는 {{"copy": "<문구>"}} 형태여야 합니다.
     """
 ).strip()
 
@@ -106,8 +108,9 @@ def parse_ad_request(user_message: str) -> Dict[str, Any]:
         return {}
 
     raw_text = response.get("reply_text", "").strip()
+    cleaned_json = _extract_json_block(raw_text)
     try:
-        parsed = json.loads(raw_text)
+        parsed = json.loads(cleaned_json)
         product_name = parsed.get("product_name", "").strip()
         if not product_name:
             logger.warning("제품명을 찾지 못했습니다.")
@@ -121,7 +124,11 @@ def parse_ad_request(user_message: str) -> Dict[str, Any]:
         parsed.setdefault("campaign_goal", "")
         return parsed
     except json.JSONDecodeError as json_error:
-        logger.error(f"JSON 파싱 실패: {json_error}; 원본 텍스트: {raw_text[:200]}")
+        logger.error(
+            "JSON 파싱 실패: %s; 원본 텍스트: %s",
+            json_error,
+            raw_text[:500]
+        )
         return {}
 
 
@@ -130,7 +137,8 @@ def generate_ad_copy_matrix(
     rag_context: Optional[str],
     tone_options: List[str],
     length_options: List[str],
-    suggestions_per_slot: int = 2
+    suggestions_per_slot: int = 2,
+    extra_instruction: str = ""
 ) -> Dict[str, Dict[str, List[str]]]:
     """
     길이×톤 조합으로 광고 문구 생성
@@ -141,6 +149,7 @@ def generate_ad_copy_matrix(
         tone_options: 사용할 톤 목록
         length_options: 사용할 길이 목록
         suggestions_per_slot: 각 조합당 생성할 문구 수
+        extra_instruction: 추가 지시 사항
 
     Returns:
         {tone: {length: [문구들]}} 구조
@@ -152,12 +161,17 @@ def generate_ad_copy_matrix(
 
     for tone in tone_options:
         for length in length_options:
+            extra_block = ""
+            if extra_instruction:
+                extra_block = f"- 추가 지시: {extra_instruction}"
+
             prompt = COPY_PROMPT_TEMPLATE.format(
                 product_brief=product_summary,
                 rag_context=rag_block,
                 tone_label=tone,
                 length_label=length,
-                suggestions=suggestions_per_slot
+                suggestions=suggestions_per_slot,
+                extra_block=extra_block
             )
             response = call_llm_with_context(
                 messages=[
@@ -273,23 +287,52 @@ def prepare_rag_documents(
 
 def _extract_copies(raw_text: str) -> List[str]:
     """LLM 응답에서 광고 문구만 추출"""
+    if not raw_text:
+        return []
+
+    json_payload = _extract_json_block(raw_text)
+
     try:
-        data = json.loads(raw_text)
+        data = json.loads(json_payload)
         if isinstance(data, list):
             return [
                 entry.get("copy", "").strip()
                 for entry in data
                 if isinstance(entry, dict) and entry.get("copy")
             ]
+        if isinstance(data, dict):
+            candidates = data.get("copies") or data.get("items")
+            if isinstance(candidates, list):
+                return [
+                    item.get("copy", "").strip()
+                    for item in candidates
+                    if isinstance(item, dict) and item.get("copy")
+                ]
     except json.JSONDecodeError:
         logger.warning("광고 문구 JSON 파싱 실패, 텍스트 기반 추출 시도")
 
-    # JSON 파싱 실패 시 줄 단위 추출 (임시)
-    copies = []
+    matches = re.findall(r'"copy"\s*:\s*"([^"]+)"', raw_text)
+    if matches:
+        return [match.strip() for match in matches]
+
+    copies: List[str] = []
     for line in raw_text.splitlines():
-        line = line.strip("-• ").strip()
-        if line:
-            copies.append(line)
+        clean = line.strip()
+        if not clean or clean.startswith("```"):
+            continue
+        clean = clean.strip("-• ")
+        if not clean:
+            continue
+        if clean.startswith("{") and clean.endswith("}"):
+            try:
+                data = json.loads(clean)
+                copy = data.get("copy")
+                if copy:
+                    copies.append(copy.strip())
+                    continue
+            except json.JSONDecodeError:
+                pass
+        copies.append(clean)
     return copies
 
 
@@ -315,3 +358,36 @@ def _summarize_product_brief(product_brief: Dict[str, Any]) -> str:
         lines.append(f"캠페인 목표: {goal}")
 
     return "\n".join(lines)
+
+
+CODE_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
+
+
+def _extract_json_block(raw_text: str) -> str:
+    """
+    LLM 응답에서 JSON 코드 블록을 추출
+
+    Args:
+        raw_text: LLM이 반환한 원본 텍스트
+
+    Returns:
+        JSON 문자열
+    """
+    if not raw_text:
+        return "{}"
+
+    match = CODE_BLOCK_PATTERN.search(raw_text)
+    if match:
+        return match.group(1).strip()
+
+    trimmed = raw_text.strip()
+    if trimmed.startswith("{") and trimmed.endswith("}"):
+        return trimmed
+
+    # { ... } 범위를 찾아 추출
+    start = trimmed.find("{")
+    end = trimmed.rfind("}")
+    if start != -1 and end != -1 and start < end:
+        return trimmed[start:end + 1]
+
+    return trimmed

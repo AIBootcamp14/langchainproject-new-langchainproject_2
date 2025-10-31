@@ -3,9 +3,15 @@
 사용자 메시지에서 키워드를 감지해 적절한 에이전트로 라우팅
 """
 import logging
+import json
 from typing import Dict, Any, Optional
 
+from app.db.session import get_db
+from app.db.crud import append_message, get_messages_by_session
+
 logger = logging.getLogger(__name__)
+
+AGENT_MARKER = "__agent__"
 
 
 # 에이전트 임포트는 파일 생성 후 활성화
@@ -121,6 +127,13 @@ def route_to_agent(session_id: str, user_message: str) -> Dict[str, Any]:
     # 태스크 감지
     task_key = detect_task(user_message)
 
+    if not task_key and session_id:
+        if _is_continuation_request(user_message):
+            remembered = _load_last_agent(session_id)
+            if remembered:
+                logger.info(f"키워드 없음 → 이전 에이전트 재사용: {remembered}")
+                task_key = remembered
+
     # 매칭되는 태스크가 없으면 안내 메시지
     if not task_key:
         return {
@@ -156,6 +169,8 @@ def route_to_agent(session_id: str, user_message: str) -> Dict[str, Any]:
     try:
         result = agent_runner(session_id, user_message)
         logger.info(f"에이전트 완료: {task_key}")
+        if result.get("success"):
+            _remember_last_agent(result["session_id"], task_key)
         return result
     except Exception as e:
         logger.error(f"에이전트 실행 실패 ({task_key}): {e}", exc_info=True)
@@ -174,3 +189,55 @@ AGENT_MAP["ad_copy"]["runner"] = run_ad  # ✅ 활성화
 AGENT_MAP["segment"]["runner"] = run_segment  # ✅ 활성화
 # AGENT_MAP["review"]["runner"] = run_review
 # AGENT_MAP["competitor"]["runner"] = run_competitor
+
+
+def _remember_last_agent(session_id: str, task_key: str) -> None:
+    """세션에 마지막으로 사용한 에이전트를 기록"""
+    if not session_id or not task_key:
+        return
+
+    payload = json.dumps({"task": task_key})
+    marker = f"{AGENT_MARKER}:{payload}"
+
+    with get_db() as db:
+        append_message(db, session_id, "system", marker)
+
+
+def _load_last_agent(session_id: str) -> Optional[str]:
+    """세션에서 마지막으로 기록된 에이전트 키를 불러옴"""
+    if not session_id:
+        return None
+
+    try:
+        with get_db() as db:
+            rows = [
+                (msg.role, msg.content)
+                for msg in get_messages_by_session(db, session_id)
+            ]
+    except Exception as exc:
+        logger.warning(f"이전 에이전트 조회 실패: {exc}")
+        return None
+
+    for role, content in reversed(rows):
+        if role != "system":
+            continue
+        if not content.startswith(AGENT_MARKER):
+            continue
+        payload = content[len(AGENT_MARKER) + 1:].strip()
+        try:
+            data = json.loads(payload)
+            task = data.get("task")
+            if task in AGENT_MAP:
+                return task
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def _is_continuation_request(user_message: str) -> bool:
+    """
+    '추가로...', '더...', '또...'와 같은 후속 요청 여부 판단
+    """
+    lowered = user_message.lower()
+    keywords = ["추가", "더", "또", "계속", "more", "another", "extra"]
+    return any(keyword in lowered for keyword in keywords)
