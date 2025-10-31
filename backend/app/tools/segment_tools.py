@@ -1,13 +1,14 @@
 """
 사용자 세그먼트 분류 도구
-LLM 기반 고객 세그먼테이션
+LLM 기반 고객 세그먼테이션 (실제 웹 검색 RAG 포함)
 """
 import logging
 from typing import List, Dict, Any
 import json
 import re
 
-from app.tools.common.web_search import search_web
+from app.tools.common.web_search import search_web, search_web_kr_commerce
+from app.tools.common.web_crawler import extract_reviews_from_search_results
 from app.tools.common.api_client import fetch_product_reviews
 from app.tools.llm import call_llm_with_context
 
@@ -57,7 +58,7 @@ def extract_product_name(user_message: str) -> str:
 
 def collect_review_data(product_name: str, num_reviews: int = 50) -> List[str]:
     """
-    제품 리뷰 데이터 수집 (웹 검색 + API)
+    제품 리뷰 데이터 수집 (실제 웹 검색 RAG + 크롤링)
 
     Args:
         product_name: 제품명
@@ -70,33 +71,47 @@ def collect_review_data(product_name: str, num_reviews: int = 50) -> List[str]:
 
     reviews = []
 
-    # 방법 1: 웹 검색으로 리뷰 페이지 찾기
+    # 방법 1: Google Custom Search로 한국 커머스 사이트 검색
     try:
         search_query = f"{product_name} 리뷰 후기"
-        search_results = search_web(search_query, num_results=5)
+        logger.info(f"커머스 사이트 우선 검색: {search_query}")
 
+        # 한국 커머스 사이트 우선 검색
+        search_results = search_web_kr_commerce(search_query, num_results=5)
+
+        # 검색 결과의 snippet도 리뷰로 활용
         for result in search_results:
             snippet = result.get('snippet', '')
             if snippet and len(snippet) > 20:
                 reviews.append(snippet)
 
-        logger.info(f"웹 검색으로 {len(reviews)}개 리뷰 수집")
+        logger.info(f"검색 결과 snippet: {len(reviews)}개")
+
+        # 방법 2: 검색된 URL에서 실제 리뷰 크롤링
+        logger.info(f"검색된 {len(search_results)}개 URL에서 리뷰 크롤링 시도")
+        crawled_reviews = extract_reviews_from_search_results(search_results, max_per_url=5)
+        reviews.extend(crawled_reviews)
+
+        logger.info(f"크롤링으로 {len(crawled_reviews)}개 리뷰 추가 (총 {len(reviews)}개)")
+
     except Exception as e:
-        logger.error(f"웹 검색 실패: {e}")
+        logger.error(f"웹 검색/크롤링 실패: {e}", exc_info=True)
 
-    # 방법 2: API로 실제 리뷰 가져오기 (네이버쇼핑 등)
-    try:
-        product_url = f"https://example.com/product/{product_name}"  # 실제로는 검색 결과에서 추출
-        api_reviews = fetch_product_reviews(product_url)
+    # 방법 3: API로 실제 리뷰 가져오기 (백업용)
+    if len(reviews) < 20:
+        try:
+            logger.info("리뷰 부족, API 호출 시도")
+            product_url = f"https://example.com/product/{product_name}"
+            api_reviews = fetch_product_reviews(product_url)
 
-        for review in api_reviews[:num_reviews]:
-            review_text = review.get('text', '')
-            if review_text:
-                reviews.append(review_text)
+            for review in api_reviews[:num_reviews]:
+                review_text = review.get('text', '')
+                if review_text:
+                    reviews.append(review_text)
 
-        logger.info(f"API로 {len(api_reviews)}개 리뷰 추가 수집")
-    except Exception as e:
-        logger.error(f"API 리뷰 수집 실패: {e}")
+            logger.info(f"API로 {len(api_reviews)}개 리뷰 추가")
+        except Exception as e:
+            logger.error(f"API 리뷰 수집 실패: {e}")
 
     # 최소한의 리뷰 보장 (모의 데이터로 보충)
     if len(reviews) < 10:
@@ -104,8 +119,41 @@ def collect_review_data(product_name: str, num_reviews: int = 50) -> List[str]:
         mock_reviews = _generate_mock_reviews(product_name)
         reviews.extend(mock_reviews)
 
-    logger.info(f"총 {len(reviews)}개 리뷰 수집 완료")
+    # 리뷰 중복 제거 및 정리
+    reviews = _deduplicate_reviews(reviews)
+
+    logger.info(f"총 {len(reviews)}개 리뷰 수집 완료 (중복 제거 후)")
     return reviews[:num_reviews]
+
+
+def _deduplicate_reviews(reviews: List[str]) -> List[str]:
+    """
+    리뷰 중복 제거 및 정리
+
+    Args:
+        reviews: 리뷰 리스트
+
+    Returns:
+        중복 제거된 리뷰 리스트
+    """
+    logger.info(f"리뷰 중복 제거 시작: {len(reviews)}개")
+
+    # 1. 빈 리뷰 제거
+    reviews = [r.strip() for r in reviews if r and r.strip()]
+
+    # 2. 너무 짧은 리뷰 제거 (10자 미만)
+    reviews = [r for r in reviews if len(r) >= 10]
+
+    # 3. 완전 중복 제거
+    seen = set()
+    unique_reviews = []
+    for review in reviews:
+        if review not in seen:
+            seen.add(review)
+            unique_reviews.append(review)
+
+    logger.info(f"중복 제거 완료: {len(unique_reviews)}개")
+    return unique_reviews
 
 
 def _generate_mock_reviews(product_name: str) -> List[str]:
