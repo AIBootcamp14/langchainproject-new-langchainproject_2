@@ -3,6 +3,7 @@
 Google Trends, Naver DataLab 등을 활용한 트렌드 분석
 """
 import logging
+import os
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -13,6 +14,10 @@ from app.tools.trend_tools import (
     resolve_time_window,
     get_naver_datalab_trends,
     analyze_trend_data,
+)
+from app.tools.pdf_generator import (
+    create_trend_report_pdf,
+    get_pdf_download_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,6 +36,7 @@ class TrendAgentContext:
         self.window_days: Optional[int] = None
         self.trend_data: Optional[Dict[str, Any]] = None
         self.analysis_result: Optional[Dict[str, Any]] = None
+        self.pdf_path: Optional[str] = None
         self.errors: list = []
 
 class TrendAgent:
@@ -127,11 +133,25 @@ class TrendAgent:
             context.analysis_result = analysis
             context.trend_data["analysis"] = analysis
 
+            try:
+                context.pdf_path = create_trend_report_pdf(
+                    context.keyword,
+                    context.trend_data,
+                    analysis,
+                )
+            except Exception as pdf_error:
+                logger.error("트렌드 리포트 PDF 생성 실패: %s", pdf_error, exc_info=True)
+                context.errors.append("트렌드 리포트 PDF 생성에 실패했습니다.")
+                context.pdf_path = None
+
             reply_text = self._generate_final_response(context, analysis)
 
             # 응답 저장
             with get_db() as db:
                 append_message(db, context.session_id, "assistant", reply_text)
+
+            pdf_filename = os.path.basename(context.pdf_path) if context.pdf_path else None
+            download_url = get_pdf_download_url(context.pdf_path) if context.pdf_path else None
 
             return {
                 "success": True,
@@ -145,6 +165,8 @@ class TrendAgent:
                     "trend_data": context.trend_data,
                     "analysis": context.analysis_result,
                 },
+                "report_id": pdf_filename,
+                "download_url": download_url,
                 "errors": context.errors,
             }
 
@@ -228,6 +250,12 @@ class TrendAgent:
 
         lines.append(f"🔗 데이터 출처: {', '.join(sources)}")
         lines.append("⚠️ 공개 데이터 기반 추정치이므로 의사결정 시 추가 검증이 필요합니다.")
+
+        if context.pdf_path:
+            filename = os.path.basename(context.pdf_path)
+            lines.append("")
+            lines.append("📄 **트렌드 리포트 PDF가 생성되었습니다.**")
+            lines.append(f"파일명: `{filename}` (다운로드 메뉴에서 확인하세요)")
 
         return "\n".join(lines)
 
