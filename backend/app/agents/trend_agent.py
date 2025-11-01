@@ -4,7 +4,8 @@ Google Trends, Naver DataLab 등을 활용한 트렌드 분석
 """
 import logging
 import os
-from typing import Dict, Any, Optional
+import re
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from app.db.session import get_db
@@ -164,6 +165,8 @@ class TrendAgent:
                     "time_unit": context.time_unit,
                     "trend_data": context.trend_data,
                     "analysis": context.analysis_result,
+                    "clusters": context.analysis_result.get("clusters") if context.analysis_result else None,
+                    "cluster_summary": context.analysis_result.get("cluster_summary") if context.analysis_result else None,
                 },
                 "report_id": pdf_filename,
                 "download_url": download_url,
@@ -210,7 +213,8 @@ class TrendAgent:
 
         summary = analysis.get("summary")
         if summary:
-            lines.append(summary)
+            for summary_line in _split_lines(summary):
+                lines.append(summary_line)
             lines.append("")
 
         naver = analysis.get("naver", {})
@@ -236,7 +240,25 @@ class TrendAgent:
         insight = analysis.get("insight")
         if insight:
             lines.append("**추천 인사이트**")
-            lines.append(insight)
+            for insight_line in _split_lines(insight):
+                lines.append(insight_line)
+            lines.append("")
+
+        clusters = analysis.get("clusters") or []
+        if clusters:
+            lines.append("**연관 키워드 클러스터**")
+            for cluster in clusters:
+                cluster_name = cluster.get("name", "클러스터")
+                change_text = fmt_pct(cluster.get("change_pct"))
+                trend_label = cluster.get("trend_label", "N/A")
+                keywords_text = ", ".join(cluster.get("keywords", [])[:4])
+                bullet = f"- {cluster_name}: {trend_label} ({change_text})"
+                if keywords_text:
+                    bullet += f" | 키워드: {keywords_text}"
+                insight_text = cluster.get("insight")
+                if insight_text:
+                    bullet += f" — {insight_text}"
+                lines.append(_strip_markdown(bullet))
             lines.append("")
 
         sources = []
@@ -272,3 +294,25 @@ def run_agent(session_id: str, user_message: str) -> Dict[str, Any]:
             session_id = session.id
 
     return agent.run(session_id, user_message)
+
+
+def _strip_markdown(text: Optional[str]) -> str:
+    if not text:
+        return ""
+
+    cleaned = str(text).replace("\r\n", "\n")
+    cleaned = re.sub(r"```.*?```", "", cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r"^#+\s*", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\*\*(.*?)\*\*", r"\1", cleaned)
+    cleaned = re.sub(r"_(.*?)_", r"\1", cleaned)
+    cleaned = re.sub(r"`([^`]*)`", r"\1", cleaned)
+    cleaned = re.sub(r"^-\s+", "• ", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^>\s*", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    cleaned = re.sub(r"[ \t]+(\n)", r"\1", cleaned)
+    return cleaned.strip()
+
+
+def _split_lines(text: Optional[str]) -> List[str]:
+    cleaned = _strip_markdown(text)
+    return [line.strip() for line in cleaned.split("\n") if line.strip()]

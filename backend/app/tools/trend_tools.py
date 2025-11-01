@@ -265,6 +265,25 @@ def analyze_trend_data(trend_data: Dict[str, Any]) -> Dict[str, Any]:
         summary_lines = ["- 신뢰할 수 있는 데이터 포인트를 찾지 못했습니다."]
 
     signal = _infer_signal(naver_metrics)
+
+    clusters = generate_keyword_clusters(
+        keyword=keyword,
+        summary_lines=summary_lines.copy(),
+        naver_metrics=naver_metrics,
+        time_unit=time_unit,
+        start_date=start_date,
+        end_date=end_date,
+        naver_data=naver_data,
+    )
+
+    cluster_summary = None
+    if clusters:
+        cluster_summary = ", ".join(
+            f"{cluster.get('name', '클러스터')} {format_percentage(cluster.get('change_pct'))}"
+            for cluster in clusters[:3]
+        )
+        summary_lines.append(f"- 연관 키워드 클러스터: {cluster_summary}")
+
     insight = _generate_insights_with_llm(
         keyword,
         summary_lines,
@@ -294,6 +313,8 @@ def analyze_trend_data(trend_data: Dict[str, Any]) -> Dict[str, Any]:
         "insight": insight,
         "signal": signal,
         "confidence": confidence,
+        "clusters": clusters,
+        "cluster_summary": cluster_summary,
     }
 
 
@@ -638,3 +659,208 @@ def _generate_rule_based_insight(
     )
     lines.append("상승 구간에서는 캠페인을 확대하고, 하락 국면에서는 연관 키워드를 발굴해 관심을 유지하세요.")
     return "\n".join(lines)
+
+
+def generate_keyword_clusters(
+    keyword: Optional[str],
+    summary_lines: List[str],
+    naver_metrics: Dict[str, Any],
+    time_unit: Optional[str],
+    start_date: Optional[str],
+    end_date: Optional[str],
+    naver_data: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    if not keyword or not naver_metrics.get("has_data"):
+        return []
+
+    hints = _extract_related_terms(naver_data)
+    hints = [term for term in dict.fromkeys(hints) if term and term.lower() != keyword.lower()]
+
+    summary_text = "\n".join(summary_lines) if summary_lines else "요약 정보 없음"
+    metrics_brief = {
+        "momentum_pct": naver_metrics.get("momentum_pct"),
+        "momentum_label": naver_metrics.get("momentum_label"),
+        "growth_pct": naver_metrics.get("growth_pct"),
+        "latest_value": naver_metrics.get("latest_value"),
+    }
+
+    try:
+        hints_text = ", ".join(hints[:10]) if hints else "없음"
+        response = call_llm_with_context(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "당신은 마케팅 데이터 분석가입니다. 주어진 검색 키워드와 지표를 바탕으로 "
+                        "연관 키워드를 3~5개의 클러스터로 묶고 각각의 추세 변화를 분석하세요. "
+                        "JSON 배열로만 답변하세요. 각 항목은 name, keywords, trend_label, change_pct, insight 필드를 가져야 합니다."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"키워드: {keyword}\n"
+                        f"기간: {start_date} ~ {end_date} (단위: {time_unit})\n"
+                        f"요약: {summary_text}\n"
+                        f"지표: {json.dumps(metrics_brief, ensure_ascii=False)}\n"
+                        f"연관 힌트: {hints_text}\n"
+                        "연관 클러스터를 3~5개 제안하고, 각 클러스터의 최근 변화율(change_pct)을 % 단위의 숫자로 제공하세요 (예: 12.5는 +12.5%)."
+                    ),
+                },
+            ]
+        )
+
+        if response.get("success"):
+            clusters_raw = response.get("reply_text", "")
+            json_str = _extract_json_block(clusters_raw)
+            if json_str:
+                data = json.loads(json_str)
+                if isinstance(data, dict):
+                    data = data.get("clusters") or data.get("result")
+                if isinstance(data, list):
+                    clusters = []
+                    for item in data:
+                        normalized = _normalize_cluster_entry(item)
+                        if normalized:
+                            clusters.append(normalized)
+                    if clusters:
+                        return clusters
+    except Exception as exc:
+        logger.debug("연관 키워드 클러스터 LLM 생성 실패: %s", exc)
+
+    return _create_cluster_fallback(keyword, hints, naver_metrics)
+
+
+def _extract_related_terms(naver_data: Optional[Dict[str, Any]]) -> List[str]:
+    terms: List[str] = []
+    if not naver_data:
+        return terms
+
+    if "results" in naver_data:
+        for entry in naver_data.get("results", []):
+            for kw in entry.get("keywords", []):
+                terms.append(kw)
+    elif "data" in naver_data:
+        for item in naver_data.get("data", []):
+            kw = item.get("keyword") or item.get("title")
+            if kw:
+                terms.append(kw)
+
+    return terms
+
+
+def _extract_json_block(text: str) -> Optional[str]:
+    if not text:
+        return None
+    match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
+    if match:
+        return match.group(1)
+    bracket_match = re.search(r"\[\s*{.*}\s*\]", text, re.DOTALL)
+    if bracket_match:
+        return bracket_match.group(0)
+    brace_match = re.search(r"{\s*\"clusters\"\s*:\s*\[.*\]}", text, re.DOTALL)
+    if brace_match:
+        return brace_match.group(0)
+    return None
+
+
+def _normalize_cluster_entry(entry: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(entry, dict):
+        return None
+
+    name = entry.get("name") or entry.get("cluster")
+    if not name:
+        return None
+
+    keywords = entry.get("keywords") or entry.get("terms") or []
+    if isinstance(keywords, str):
+        keywords = [kw.strip() for kw in keywords.split(',') if kw.strip()]
+
+    trend_label = entry.get("trend_label") or entry.get("trend") or entry.get("direction")
+    change_pct = _parse_change_value(entry.get("change_pct") or entry.get("change") or entry.get("delta"))
+    insight = entry.get("insight") or entry.get("note") or entry.get("summary") or ""
+
+    return {
+        "name": name,
+        "keywords": keywords,
+        "trend_label": trend_label or "보합",
+        "change_pct": change_pct,
+        "insight": insight.strip(),
+    }
+
+
+def _parse_change_value(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        match = re.search(r"-?\d+(?:\.\d+)?", value.replace(',', ''))
+        if match:
+            number = float(match.group(0))
+            return number
+    return None
+
+
+def _create_cluster_fallback(
+    keyword: str,
+    hints: List[str],
+    naver_metrics: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    if not naver_metrics.get("has_data"):
+        return []
+
+    terms = [term for term in hints if term]
+    defaults = [
+        f"{keyword} 구매",
+        f"{keyword} 가격",
+        f"{keyword} 후기",
+        f"{keyword} 레시피",
+        f"{keyword} 기기",
+        f"{keyword} 이벤트",
+    ]
+    for default_term in defaults:
+        if default_term not in terms:
+            terms.append(default_term)
+
+    while len(terms) < 6:
+        terms.append(f"{keyword} 관련 {len(terms)}")
+
+    momentum = _safe_float(naver_metrics.get("momentum_pct"))
+    growth = _safe_float(naver_metrics.get("growth_pct"))
+    latest = _safe_float(naver_metrics.get("latest_value"))
+
+    clusters = [
+        {
+            "name": "핵심 수요",
+            "keywords": [keyword, terms[0], terms[1]],
+            "trend_label": _momentum_label(momentum),
+            "change_pct": momentum,
+            "insight": "핵심 검색어와 직접적인 연관어에서 나타난 수요 흐름입니다.",
+        },
+        {
+            "name": "구매 고려 및 가격",
+            "keywords": [terms[2], terms[3]],
+            "trend_label": _momentum_label(growth if growth else momentum / 2),
+            "change_pct": growth if growth else momentum / 2,
+            "insight": "구매 의도와 가격 탐색 키워드의 변화를 통해 전환 가능성을 파악하세요.",
+        },
+        {
+            "name": "관련 라이프스타일",
+            "keywords": [terms[4], terms[5]],
+            "trend_label": _momentum_label((momentum + growth) / 2 if (momentum or growth) else latest / 100),
+            "change_pct": (momentum + growth) / 2 if (momentum or growth) else None,
+            "insight": "콘텐츠/라이프스타일 키워드의 변화를 활용해 캠페인 소재를 확장할 수 있습니다.",
+        },
+    ]
+
+    return clusters
+
+
+def _safe_float(value: Any) -> float:
+    try:
+        if value is None:
+            return 0.0
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0

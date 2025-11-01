@@ -337,18 +337,27 @@ def create_trend_report_pdf(keyword: str, trend_data: Dict[str, Any], analysis: 
         summary_lines.append(f"• 추세 해석: {analysis['signal']}")
     if analysis.get('confidence'):
         summary_lines.append(f"• 데이터 신뢰도: {analysis['confidence']}")
-    if analysis.get('summary'):
-        summary_lines.append(f"• 핵심 요약:<br/>{analysis['summary'].replace('\n', '<br/>')}")
+
+    summary_body = analysis.get('summary')
+    if summary_body:
+        summary_lines.append("• 핵심 요약:")
+        for idx, sub_line in enumerate(_split_lines(summary_body), start=1):
+            bullet_text = sub_line.lstrip('• ').strip()
+            summary_lines.append(f"   • {bullet_text}")
 
     if summary_lines:
-        story.append(Paragraph("<br/>".join(summary_lines), body_style))
+        for line in summary_lines:
+            story.append(Paragraph(_strip_markdown(line), body_style))
+        story.append(Spacer(1, 0.3 * cm))
     else:
         story.append(Paragraph("요약 정보를 생성할 수 없습니다.", body_style))
 
     if analysis.get('insight'):
         story.append(Spacer(1, 0.5 * cm))
         story.append(Paragraph("추천 인사이트", heading_style))
-        story.append(Paragraph(analysis['insight'].replace('\n', '<br/>'), body_style))
+        insight_lines = _split_lines(analysis['insight'])
+        for line in insight_lines:
+            story.append(Paragraph(line, body_style))
 
     story.append(PageBreak())
 
@@ -356,11 +365,11 @@ def create_trend_report_pdf(keyword: str, trend_data: Dict[str, Any], analysis: 
     story.append(Spacer(1, 0.2 * cm))
     naver_metrics = analysis.get('naver', {}) or {}
     metrics_data = [
-        ["지표", "값"],
-        ["평균 지수", _format_metric(naver_metrics.get('average'))],
-        ["최신 지수", _format_metric(naver_metrics.get('latest_value'), integer=True)],
-        ["최근 모멘텀", _format_percentage(naver_metrics.get('momentum_pct'), naver_metrics.get('momentum_label'))],
-        ["첫 시점 대비 변화", _format_percentage(naver_metrics.get('growth_pct'))],
+        [Paragraph("<b>지표</b>", body_style), Paragraph("<b>값</b>", body_style)],
+        [Paragraph("평균 지수", body_style), Paragraph(_format_metric(naver_metrics.get('average')), body_style)],
+        [Paragraph("최신 지수", body_style), Paragraph(_format_metric(naver_metrics.get('latest_value'), integer=True), body_style)],
+        [Paragraph("최근 모멘텀", body_style), Paragraph(_format_percentage(naver_metrics.get('momentum_pct'), naver_metrics.get('momentum_label')), body_style)],
+        [Paragraph("첫 시점 대비 변화", body_style), Paragraph(_format_percentage(naver_metrics.get('growth_pct')), body_style)],
     ]
 
     peak = naver_metrics.get('peak')
@@ -383,6 +392,57 @@ def create_trend_report_pdf(keyword: str, trend_data: Dict[str, Any], analysis: 
         ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F8F9F9')),
     ]))
     story.append(metrics_table)
+
+    clusters = analysis.get('clusters') or []
+    if clusters:
+        story.append(Spacer(1, 0.6 * cm))
+        story.append(Paragraph("연관 키워드 클러스터", heading_style))
+        story.append(Spacer(1, 0.2 * cm))
+
+        cluster_headers = [
+            Paragraph("<b>클러스터</b>", body_style),
+            Paragraph("<b>대표 키워드</b>", body_style),
+            Paragraph("<b>추세</b>", body_style),
+            Paragraph("<b>변화율</b>", body_style),
+            Paragraph("<b>인사이트</b>", body_style),
+        ]
+
+        cluster_rows: List[List[Any]] = [cluster_headers]
+        for cluster in clusters:
+            keywords = cluster.get('keywords', [])[:6]
+            keywords_text = ", ".join(keywords)
+            change_text = _format_percentage(cluster.get('change_pct'))
+            insight_text = cluster.get('insight', '').replace('\n', ' ')
+            if len(insight_text) > 220:
+                insight_text = insight_text[:220] + "..."
+
+        cluster_rows.append([
+            Paragraph(_strip_markdown(cluster.get('name', '클러스터')), body_style),
+            Paragraph(_strip_markdown(keywords_text or "-"), body_style),
+            Paragraph(_strip_markdown(cluster.get('trend_label', 'N/A')), body_style),
+            Paragraph(_strip_markdown(change_text), body_style),
+            Paragraph(_strip_markdown(insight_text), body_style),
+        ])
+
+        cluster_table = Table(cluster_rows, colWidths=[3.5 * cm, 4.5 * cm, 2.2 * cm, 2.2 * cm, 5.6 * cm])
+        cluster_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#5B2C6F')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 0), (-1, 0), 'MalgunGothic-Bold'),
+            ('FONTNAME', (0, 1), (-1, -1), 'MalgunGothic'),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTSIZE', (0, 1), (-1, -1), 8.5),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F4ECF7')]),
+        ]))
+        story.append(cluster_table)
 
     story.append(PageBreak())
 
@@ -521,3 +581,25 @@ def _build_detailed_series_rows(naver_data: Optional[Dict[str, Any]], keyword: s
             ])
 
     return rows if len(rows) > 1 else []
+
+
+def _strip_markdown(text: Optional[str]) -> str:
+    if not text:
+        return ""
+
+    cleaned = str(text).replace('\r\n', '\n')
+    cleaned = re.sub(r"```.*?```", "", cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r"^#+\s*", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\*\*(.*?)\*\*", r"\1", cleaned)
+    cleaned = re.sub(r"_(.*?)_", r"\1", cleaned)
+    cleaned = re.sub(r"`([^`]*)`", r"\1", cleaned)
+    cleaned = re.sub(r"^-\s+", "• ", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^>\s*", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    cleaned = re.sub(r"[ \t]+(\n)", r"\1", cleaned)
+    return cleaned.strip()
+
+
+def _split_lines(text: Optional[str]) -> List[str]:
+    cleaned = _strip_markdown(text)
+    return [line.strip() for line in cleaned.split('\n') if line.strip()]
