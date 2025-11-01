@@ -38,7 +38,8 @@ class TrendAgentContext:
         self.trend_data: Optional[Dict[str, Any]] = None
         self.analysis_result: Optional[Dict[str, Any]] = None
         self.pdf_path: Optional[str] = None
-        self.errors: list = []
+        self.errors: List[str] = []
+
 
 class TrendAgent:
     """트렌드 분석 에이전트"""
@@ -47,22 +48,11 @@ class TrendAgent:
         self.name = "TrendAgent"
 
     def run(self, session_id: str, user_message: str) -> Dict[str, Any]:
-        """
-        에이전트 실행
-
-        Args:
-            session_id: 세션 ID
-            user_message: 사용자 메시지
-
-        Returns:
-            실행 결과
-        """
-        logger.info(f"트렌드 분석 에이전트 시작 (세션: {session_id})")
+        logger.info("트렌드 분석 에이전트 시작 (세션: %s)", session_id)
 
         context = TrendAgentContext(session_id, user_message)
 
         try:
-            # 세션 확인/생성
             with get_db() as db:
                 if not session_id:
                     session = create_session(db)
@@ -73,11 +63,9 @@ class TrendAgent:
                         session = create_session(db)
                         context.session_id = session.id
 
-                # 사용자 메시지 저장
                 append_message(db, context.session_id, "system", "--- 트렌드 분석 시작 ---")
                 append_message(db, context.session_id, "user", context.user_message)
 
-            # Step 1: 키워드 추출
             logger.info("Step 1: 키워드 추출")
             context.keyword = extract_trend_keyword(context.user_message)
 
@@ -98,7 +86,6 @@ class TrendAgent:
                     "errors": context.errors,
                 }
 
-            # Step 2: 기간 해석 및 데이터 수집
             time_window = resolve_time_window(context.user_message)
             context.start_date = time_window["start_date"]
             context.end_date = time_window["end_date"]
@@ -128,7 +115,6 @@ class TrendAgent:
                 "fetched_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
             }
 
-            # Step 3: 데이터 분석 및 응답 생성
             logger.info("Step 3: 트렌드 데이터 분석")
             analysis = analyze_trend_data(context.trend_data)
             context.analysis_result = analysis
@@ -140,14 +126,13 @@ class TrendAgent:
                     context.trend_data,
                     analysis,
                 )
-            except Exception as pdf_error:
+            except Exception as pdf_error:  # pragma: no cover - ReportLab 오류는 런타임 확인
                 logger.error("트렌드 리포트 PDF 생성 실패: %s", pdf_error, exc_info=True)
                 context.errors.append("트렌드 리포트 PDF 생성에 실패했습니다.")
                 context.pdf_path = None
 
             reply_text = self._generate_final_response(context, analysis)
 
-            # 응답 저장
             with get_db() as db:
                 append_message(db, context.session_id, "assistant", reply_text)
 
@@ -173,19 +158,17 @@ class TrendAgent:
                 "errors": context.errors,
             }
 
-        except Exception as e:
-            logger.error(f"트렌드 분석 실패: {e}", exc_info=True)
+        except Exception as exc:  # pragma: no cover - 전체 파이프라인 오류는 런타임 확인
+            logger.error("트렌드 분석 실패: %s", exc, exc_info=True)
             return {
                 "success": False,
                 "session_id": context.session_id,
-                "reply_text": f"트렌드 분석 중 오류가 발생했습니다: {str(e)}",
+                "reply_text": f"트렌드 분석 중 오류가 발생했습니다: {str(exc)}",
                 "result_data": None,
-                "errors": context.errors + [str(e)],
+                "errors": context.errors + [str(exc)],
             }
 
     def _generate_final_response(self, context: TrendAgentContext, analysis: Dict[str, Any]) -> str:
-        """최종 응답 생성"""
-
         def fmt_pct(value: Optional[float]) -> str:
             return f"{value:+.1f}%" if isinstance(value, (int, float)) else "N/A"
 
@@ -195,7 +178,7 @@ class TrendAgent:
         def fmt_index(value: Optional[float]) -> str:
             return f"{value:.0f}" if isinstance(value, (int, float)) else "N/A"
 
-        lines = []
+        lines: List[str] = []
         keyword = context.keyword or analysis.get("keyword", "")
         lines.append(f"📈 **'{keyword}' 트렌드 분석 요약**")
         lines.append("")
@@ -282,17 +265,14 @@ class TrendAgent:
         return "\n".join(lines)
 
 
-# 싱글톤 인스턴스
 agent = TrendAgent()
 
 
 def run_agent(session_id: str, user_message: str) -> Dict[str, Any]:
-    """헬퍼 함수"""
     if not session_id:
         with get_db() as db:
             session = create_session(db)
             session_id = session.id
-
     return agent.run(session_id, user_message)
 
 
