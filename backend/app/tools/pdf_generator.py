@@ -3,7 +3,7 @@ PDF 리포트 생성 도구
 ReportLab을 사용한 세그먼트 분석 리포트 생성 (한글 지원)
 """
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 import os
 import uuid
@@ -251,6 +251,122 @@ def create_segment_report_pdf(segments: Dict[str, Any], product_name: str) -> st
         return filepath
     except Exception as e:
         logger.error(f"PDF 빌드 실패: {e}", exc_info=True)
+        raise
+
+
+def create_review_report_pdf(sentiment_result: Dict[str, Any], topics: List[str], summary: Optional[str], improvements_area: List[str], product_name: Optional[str]) -> str:
+    """
+    리뷰 분석 PDF 리포트 생성 (한글 지원)
+
+    Args:
+        sentiment_result: 감성 분석 결과
+        topics: 주요 토픽 리스트
+        summary: 리뷰 요약 텍스트
+        improvements_area: 개선점 리스트
+        product_name: 제품명
+
+    Returns:
+        생성된 PDF 파일 경로
+    """
+
+    logger.info("리뷰 분석 PDF 리포트 생성 시작")
+    
+    # 한글 폰트 등록
+    register_korean_font()
+
+    # reports 폴더 확인/생성
+    reports_dir = "reports"
+    if not os.path.exists(reports_dir):
+        os.makedirs(reports_dir)
+        logger.info(f"리포트 폴더 생성: {reports_dir}")
+
+    # 파일명 생성
+    pdf_file_path = f"/path/to/review_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+
+    # PDF 문서 생성
+    doc = SimpleDocTemplate(pdf_file_path, pagesize=A4)
+    story = []
+
+    # 스타일 정의 (한글 폰트 적용)
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontName='MalgunGothic-Bold',
+        fontSize=24,
+        textColor=colors.HexColor('#2C3E50'),
+        spaceAfter=30,
+        alignment=TA_CENTER
+    )
+
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontName='MalgunGothic-Bold',
+        fontSize=16,
+        textColor=colors.HexColor('#34495E'),
+        spaceAfter=12
+    )
+
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['BodyText'],
+        fontName='MalgunGothic',
+        fontSize=10,
+        leading=16
+    )
+
+    # 표지
+    story.append(Spacer(1, 2 * cm))
+    story.append(Paragraph(f"리뷰 분석 리포트", title_style))
+    story.append(Spacer(1, 0.5 * cm))
+    story.append(Paragraph(f"제품: {product_name or 'N/A'}", heading_style))
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph(f"생성일시: {datetime.now().strftime('%Y년 %m월 %d일 %H:%M')}", body_style))
+    story.append(PageBreak())
+
+    # 감성 분석 섹션
+    story.append(Paragraph("감성 분석 결과", heading_style))
+    story.append(Spacer(1, 0.3 * cm))
+    sentiment_text = f"총 리뷰 수: {sentiment_result.get('total_reviews', 0)}<br/><br/>"
+    sentiment_text += f"긍정: {sentiment_result.get('sentiment_distribution', {}).get('positive', 0)}개<br/>"
+    sentiment_text += f"부정: {sentiment_result.get('sentiment_distribution', {}).get('negative', 0)}개<br/>"
+    sentiment_text += f"중립: {sentiment_result.get('sentiment_distribution', {}).get('neutral', 0)}개<br/><br/>"
+    sentiment_text += f"평균 점수: {sentiment_result.get('average_score', 0):.2f}"
+    story.append(Paragraph(sentiment_text, body_style))
+    story.append(Spacer(1, 1 * cm))
+
+    # 주요 토픽 섹션
+    story.append(Paragraph("주요 토픽", heading_style))
+    story.append(Spacer(1, 0.3 * cm))
+    for i, topic in enumerate(topics, 1):
+        story.append(Paragraph(f"{i}. {topic}", body_style))
+        story.append(Spacer(1, 0.2 * cm))
+    story.append(Spacer(1, 1 * cm))
+
+    # 리뷰 요약 섹션
+    if summary:
+        story.append(Paragraph("리뷰 요약", heading_style))
+        story.append(Spacer(1, 0.3 * cm))
+        story.append(Paragraph(summary, body_style))
+        story.append(Spacer(1, 1 * cm))
+
+    # 개선점 섹션
+    story.append(Paragraph("개선점", heading_style))
+    story.append(Spacer(1, 0.3 * cm))
+    for i, area in enumerate(improvements_area, 1):
+        story.append(Paragraph(f"{i}. {area}", body_style))
+        story.append(Spacer(1, 0.2 * cm))
+    story.append(Spacer(1, 1 * cm))
+
+    # PDF 빌드
+    try:
+        doc.build(story)
+        logger.info(f"리뷰 분석 PDF 리포트 생성 성공: {pdf_file_path}")
+        return pdf_file_path
+    except Exception as e:
+        logger.error(f"리뷰 분석 PDF 빌드 실패: {e}", exc_info=True)
         raise
 
 
